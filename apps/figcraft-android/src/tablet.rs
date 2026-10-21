@@ -205,23 +205,33 @@ impl TabletApp {
 struct PasteBridge {
     /// The Ctrl+V chord under way has had its paste event (it may span frames).
     pasted: bool,
+    /// Cmd/Ctrl is held, as the last modifier change or key said.
+    command: bool,
 }
 
 impl PasteBridge {
     fn route(&mut self, raw: &mut egui::RawInput, system_text: impl FnOnce() -> Option<String>) {
         let ctrl_v = |e: &Event| matches!(e, Event::Key { key: egui::Key::V, modifiers, .. } if modifiers.command && !modifiers.alt && !modifiers.shift);
         if !raw.events.iter().any(|e| matches!(e, Event::Paste(_)) || ctrl_v(e)) {
+            if let Some(m) = raw.events.iter().rev().find_map(|e| match e {
+                Event::ModifiersChanged(m) | Event::Key { modifiers: m, .. } => Some(m),
+                _ => None,
+            }) {
+                self.command = m.command;
+            }
             return;
         }
         let text = system_text();
-        let command = raw.modifiers.command;
         let mut out = Vec::with_capacity(raw.events.len() + 1);
         for mut e in std::mem::take(&mut raw.events) {
+            if let Event::ModifiersChanged(m) | Event::Key { modifiers: m, .. } = &e {
+                self.command = m.command;
+            }
             if let Event::Paste(p) = &mut e {
                 if let Some(t) = &text {
                     p.clone_from(t);
                 }
-                self.pasted |= command;
+                self.pasted |= self.command;
             } else if let Event::Key { pressed, .. } = e
                 && ctrl_v(&e)
             {
@@ -394,8 +404,14 @@ mod tests {
         }
     }
 
-    fn frame(events: Vec<Event>, command: bool) -> egui::RawInput {
-        egui::RawInput { events, modifiers: egui::Modifiers { command, ctrl: command, ..Default::default() }, ..Default::default() }
+    fn frame(mut events: Vec<Event>, command: bool) -> egui::RawInput {
+        events.insert(0, Event::ModifiersChanged(egui::Modifiers { command, ctrl: command, ..Default::default() }));
+        egui::RawInput { events, ..Default::default() }
+    }
+
+    /// The events after the leading modifier change [`frame`] adds.
+    fn rest(raw: &egui::RawInput) -> &[Event] {
+        raw.events.get(1..).unwrap_or_default()
     }
 
     #[test]
@@ -405,22 +421,22 @@ mod tests {
         let mut b = PasteBridge::default();
         let mut raw = frame(vec![key_v(false)], false);
         b.route(&mut raw, sys);
-        assert_eq!(raw.events, vec![Event::Paste("from mail".into()), key_v(false)]);
+        assert_eq!(rest(&raw), [Event::Paste("from mail".into()), key_v(false)]);
         // egui-winit pasted its own copy on the press: that paste takes the system text, and the
         // release a frame later adds nothing.
         let mut raw = frame(vec![Event::Paste("ours".into())], true);
         b.route(&mut raw, sys);
-        assert_eq!(raw.events, vec![Event::Paste("from mail".into())]);
+        assert_eq!(rest(&raw), [Event::Paste("from mail".into())]);
         let mut raw = frame(vec![key_v(false)], false);
         b.route(&mut raw, sys);
-        assert_eq!(raw.events, vec![key_v(false)]);
+        assert_eq!(rest(&raw), [key_v(false)]);
         // The next chord pastes again.
         let mut raw = frame(vec![key_v(true), key_v(false)], true);
         b.route(&mut raw, sys);
-        assert_eq!(raw.events, vec![Event::Paste("from mail".into()), key_v(true), key_v(false)]);
+        assert_eq!(rest(&raw), [Event::Paste("from mail".into()), key_v(true), key_v(false)]);
         // Nothing on the system clipboard: unchanged.
         let mut raw = frame(vec![key_v(false)], false);
         b.route(&mut raw, || None);
-        assert_eq!(raw.events, vec![key_v(false)]);
+        assert_eq!(rest(&raw), [key_v(false)]);
     }
 }
