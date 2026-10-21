@@ -54,6 +54,9 @@ fn craft_fonts(dir: &std::path::Path, manifest_rel: &str) -> Result<String, Stri
     watch(&manifest);
     let text = std::fs::read_to_string(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
     let wasm = std::env::var("CARGO_CFG_TARGET_ARCH").is_ok_and(|a| a == "wasm32");
+    // The Android APK keeps the web build's size budget: every update downloads the whole APK,
+    // and the system's own fonts (Roboto, Noto) are scanned at runtime as on the desktop.
+    let lean = wasm || std::env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "android");
     let mut out = String::new();
     for line in text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
         let f: Vec<&str> = line.split(" | ").map(str::trim).collect();
@@ -68,7 +71,7 @@ fn craft_fonts(dir: &std::path::Path, manifest_rel: &str) -> Result<String, Stri
         // Web builds have a size budget: Inter, Noto Sans Georgian (small, for the Georgian UI), only the
         // SemiBold wordmark, and optionally Noto Sans CJK (every CJK script, for CJK UI text).
         let wordmark = *family == "Archivo" && *style == "SemiBold";
-        if wasm && !matches!(*family, "Inter" | "Noto Sans Georgian") && !wordmark && !cjk {
+        if lean && !matches!(*family, "Inter" | "Noto Sans Georgian") && !wordmark && !cjk {
             continue;
         }
         let path = dir.join(file).canonicalize().map_err(|e| format!("{file}: {e}"))?;

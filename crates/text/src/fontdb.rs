@@ -756,7 +756,17 @@ fn system_font_dirs() -> Vec<std::path::PathBuf> {
             v.push(std::path::PathBuf::from(l).join("Microsoft\\Windows\\Fonts"));
         }
     }
-    #[cfg(all(unix, not(target_os = "macos")))]
+    // The system's fonts (Roboto, Noto, the CJK collections) and, with the Android build's HOME at
+    // shared storage, a Fonts folder there for the user's own.
+    #[cfg(target_os = "android")]
+    {
+        v.push("/system/fonts".into());
+        v.push("/product/fonts".into());
+        if let Some(h) = std::env::var_os("HOME") {
+            v.push(std::path::PathBuf::from(h).join("Fonts"));
+        }
+    }
+    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
     {
         v.push("/usr/share/fonts".into());
         v.push("/usr/local/share/fonts".into());
@@ -776,7 +786,7 @@ fn font_asset_dirs(store: &std::path::Path) -> Vec<std::path::PathBuf> {
 
 // Fontconfig's default configuration uses $XDG_DATA_HOME/fonts for user fonts.
 // Ignore relative XDG paths, as required by the XDG Base Directory Specification.
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 fn unix_user_font_dirs(home: Option<std::ffi::OsString>, data_home: Option<std::ffi::OsString>) -> Vec<std::path::PathBuf> {
     let home = home.map(std::path::PathBuf::from);
     let data = data_home.map(std::path::PathBuf::from).filter(|p| p.is_absolute()).or_else(|| home.as_ref().map(|h| h.join(".local/share")));

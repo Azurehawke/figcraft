@@ -2,7 +2,7 @@
 resolver = "3"
 members = ["crates/*", "apps/*", "xtask"]
 # The plugin SDK and examples build for wasm32 in a workspace of their own (`cargo xtask plugins`).
-exclude = ["plugins"]
+exclude = ["plugins", "vendor"]
 # default-members = ["crates/*", "apps/figcraft", "apps/figcraft-cli", "xtask"]
 
 [workspace.package]
@@ -83,6 +83,15 @@ eframe = { version = "0.36", default-features = false }
 rfd = "0.17"
 arboard = { version = "3.6", default-features = false }
 webbrowser = "1"
+
+# Patched crates, vendored for the Android build (`apps/figcraft-android`, `android` branch; see
+# vendor/README.md).
+[patch.crates-io]
+# winit 0.30.13 with the Android patches from the PdfCraft, WordCraft, GridCraft and DesignCraft
+# ports: each touch carries its tool (finger, S Pen, palm), and a mouse or touchpad works as a mouse.
+winit = { path = "vendor/winit" }
+# A 64 MiB stack for the thread the whole UI runs on.
+android-activity = { path = "vendor/android-activity" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
